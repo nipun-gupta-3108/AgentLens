@@ -6,11 +6,13 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 import streamlit as st
+from markdown_it import MarkdownIt
 
 from agents import critic_chain
 from pipeline import extract_score, generate_report, revise_report
 from tools import get_search_results, scrape_url
 
+MARKDOWN_RENDERER = MarkdownIt("commonmark", {"html": False})
 
 PIPELINE_STAGES = [
     ("search", "Search", "Find reliable web results"),
@@ -23,7 +25,7 @@ PIPELINE_STAGES = [
 
 def configure_page() -> None:
     st.set_page_config(
-        page_title="ResearchMind | AI Research Workspace",
+        page_title="AgentLens | AI Research Workspace",
         page_icon="🔬",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -308,6 +310,41 @@ label, .stTextArea label, .stTextInput label {
     line-height: 1.72;
 }
 
+.doc-section .content h1,
+.doc-section .content h2,
+.doc-section .content h3,
+.doc-section .content h4 {
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1.35;
+    margin: 0.85rem 0 0.45rem;
+}
+
+.doc-section .content p {
+    margin: 0 0 0.75rem;
+}
+
+.doc-section .content ul,
+.doc-section .content ol {
+    margin: 0.35rem 0 0.85rem;
+    padding-left: 1.25rem;
+}
+
+.doc-section .content li {
+    margin: 0.25rem 0;
+}
+
+.doc-section .content a {
+    color: #93c5fd !important;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(147, 197, 253, 0.32);
+}
+
+.doc-section .content strong {
+    color: var(--text);
+    font-weight: 800;
+}
+
 .quality-card {
     padding: 1.15rem;
     border-color: rgba(94, 234, 212, 0.28);
@@ -502,6 +539,17 @@ div[data-testid="stAlert"] {
     .metric-grid, .stage-track, .source-grid { grid-template-columns: 1fr; }
     .stage-card { min-height: auto; }
 }
+
+.footer {
+    margin-top: 4rem;
+    padding: 1.25rem 0;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    color: var(--subtle);
+    font-size: 0.75rem;
+}
 </style>
         """,
         unsafe_allow_html=True,
@@ -561,18 +609,18 @@ def render_stage_track() -> None:
 
     for index, (key, name, desc) in enumerate(PIPELINE_STAGES, start=1):
         stage_state = state.get(key, "waiting")
-        cards.append(
-            f"""
+        cards.append(f"""
 <div class="stage-card {escape_text(stage_state)}">
     <div class="stage-index">STEP {index:02d}</div>
     <div class="stage-name">{escape_text(name)}</div>
     <div class="stage-desc">{escape_text(desc)}</div>
     <div class="stage-state"><span class="stage-dot"></span>{escape_text(label_map.get(stage_state, stage_state))}</div>
 </div>
-            """
-        )
+            """)
 
-    st.markdown(f'<div class="stage-track">{"".join(cards)}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="stage-track">{"".join(cards)}</div>', unsafe_allow_html=True
+    )
 
 
 def set_stage(stage: str, status: str) -> None:
@@ -591,7 +639,9 @@ def parse_report_sections(report: str) -> dict[str, str]:
     }
 
     matches = []
-    for match in re.finditer(r"(?m)^\s*(?:#+\s*)?(?:\d+[\).\s-]+)?([A-Za-z /]+)\s*:?\s*$", report or ""):
+    for match in re.finditer(
+        r"(?m)^\s*(?:#+\s*)?(?:\d+[\).\s-]+)?([A-Za-z /]+)\s*:?\s*$", report or ""
+    ):
         title = match.group(1).strip()
         canonical = canonical_by_alias.get(title.lower())
         if canonical:
@@ -635,12 +685,18 @@ def extract_critic_block(feedback: str, heading: str, next_headings: list[str]) 
 
 def parse_critic_feedback(feedback: str) -> dict[str, object]:
     strengths = parse_bullets(
-        extract_critic_block(feedback, "Strengths", ["Areas to Improve", "One line verdict"])
+        extract_critic_block(
+            feedback, "Strengths", ["Areas to Improve", "One line verdict"]
+        )
     )
     improvements = parse_bullets(
-        extract_critic_block(feedback, "Areas to Improve", ["One line verdict", "Strengths"])
+        extract_critic_block(
+            feedback, "Areas to Improve", ["One line verdict", "Strengths"]
+        )
     )
-    verdict_match = re.search(r"One line verdict:\s*(.+)", feedback or "", flags=re.I | re.S)
+    verdict_match = re.search(
+        r"One line verdict:\s*(.+)", feedback or "", flags=re.I | re.S
+    )
     verdict = verdict_match.group(1).strip().splitlines()[0] if verdict_match else ""
 
     criteria = {}
@@ -652,7 +708,11 @@ def parse_critic_feedback(feedback: str) -> dict[str, object]:
         "Critical Analysis",
         "Clarity",
     ]:
-        match = re.search(rf"{re.escape(label)}:\s*(\d+(?:\.\d+)?)\s*/\s*10", feedback or "", flags=re.I)
+        match = re.search(
+            rf"{re.escape(label)}:\s*(\d+(?:\.\d+)?)\s*/\s*10",
+            feedback or "",
+            flags=re.I,
+        )
         if match:
             criteria[label] = match.group(1)
 
@@ -665,13 +725,18 @@ def parse_critic_feedback(feedback: str) -> dict[str, object]:
     }
 
 
-def render_doc_section(title: str, content: str, fallback: str = "No content was returned for this section.") -> None:
+def render_doc_section(
+    title: str,
+    content: str,
+    fallback: str = "No content was returned for this section.",
+) -> None:
     content = content.strip() if content else fallback
+    rendered_content = MARKDOWN_RENDERER.render(content)
     st.markdown(
         f"""
 <div class="doc-section">
     <h3>{escape_text(title)}</h3>
-    <div class="content">{escape_text(content).replace(chr(10), "<br>")}</div>
+    <div class="content">{rendered_content}</div>
 </div>
         """,
         unsafe_allow_html=True,
@@ -696,18 +761,18 @@ def render_source_cards(sources: list[dict]) -> None:
         title = item.get("title") or f"Source {idx}"
         url = item.get("url") or ""
         snippet = item.get("content") or item.get("snippet") or ""
-        cards.append(
-            f"""
+        cards.append(f"""
 <div class="source-card">
     <div class="source-domain">SOURCE {idx:02d} | {escape_text(domain_from_url(url))}</div>
     <div class="source-title">{escape_text(title)}</div>
     <div class="source-snippet">{escape_text(snippet[:260])}</div>
     {f'<a href="{escape_text(url)}" target="_blank" rel="noopener noreferrer">{escape_text(url)}</a>' if url else ''}
 </div>
-            """
-        )
+            """)
 
-    st.markdown(f'<div class="source-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="source-grid">{"".join(cards)}</div>', unsafe_allow_html=True
+    )
 
 
 def render_feedback_list(title: str, items: list[str], empty: str) -> None:
@@ -814,25 +879,27 @@ def run_pipeline_with_live_ui(topic: str, stage_slot, detail_slot) -> None:
         with stage_slot:
             render_stage_track()
         detail_slot.info("Scraping the top source pages for deeper context...")
-        unique_urls = list(dict.fromkeys(item["url"] for item in search_results if item.get("url")))
+        unique_urls = list(
+            dict.fromkeys(item["url"] for item in search_results if item.get("url"))
+        )
         scraped_sources = []
 
         for index, url in enumerate(unique_urls[:3], start=1):
-            detail_slot.info(f"Scraping source {index} of {min(len(unique_urls), 3)}: {domain_from_url(url)}")
+            detail_slot.info(
+                f"Scraping source {index} of {min(len(unique_urls), 3)}: {domain_from_url(url)}"
+            )
             try:
                 content = scrape_url.invoke({"url": url})
             except Exception as exc:
                 content = f"Unable to scrape this source. Error: {exc}"
 
-            scraped_sources.append(
-                f"""
+            scraped_sources.append(f"""
 SOURCE {index}
 URL: {url}
 
 CONTENT:
 {content}
-"""
-            )
+""")
 
         st.session_state.results["scraped_content"] = "\n".join(scraped_sources)
         set_stage("scrape", "done")
@@ -856,7 +923,9 @@ CONTENT:
         with stage_slot:
             render_stage_track()
         detail_slot.info("Evaluating accuracy, citations, completeness, and clarity...")
-        feedback = critic_chain.invoke({"report": report, "research": research_combined})
+        feedback = critic_chain.invoke(
+            {"report": report, "research": research_combined}
+        )
         score = extract_score(feedback)
         st.session_state.results["feedback"] = feedback
         st.session_state.results["score"] = score
@@ -866,7 +935,9 @@ CONTENT:
             set_stage("revision", "running")
             with stage_slot:
                 render_stage_track()
-            detail_slot.info("Score is below threshold. Revising the report with critic feedback...")
+            detail_slot.info(
+                "Score is below threshold. Revising the report with critic feedback..."
+            )
             revised = revise_report(
                 topic=topic,
                 report=report,
@@ -900,7 +971,11 @@ CONTENT:
 
     except Exception as exc:
         active = next(
-            (key for key, status in st.session_state.stage_states.items() if status == "running"),
+            (
+                key
+                for key, status in st.session_state.stage_states.items()
+                if status == "running"
+            ),
             None,
         )
         if active:
@@ -919,24 +994,31 @@ def render_sidebar() -> None:
         st.markdown(
             """
 <div class="sidebar-brand">
-    <h2>ResearchMind</h2>
+    <h2>AgentLens</h2>
     <p>Multi-agent AI research workspace</p>
 </div>
             """,
             unsafe_allow_html=True,
         )
 
-        st.markdown('<div class="sidebar-section">New Research</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sidebar-section">New Research</div>', unsafe_allow_html=True
+        )
         if st.button("Start New Research", use_container_width=True, type="secondary"):
             st.session_state.results = {}
             st.session_state.error = None
             st.session_state.done = False
             st.session_state.running = False
-            st.session_state.stage_states = {key: "waiting" for key, _, _ in PIPELINE_STAGES}
+            st.session_state.stage_states = {
+                key: "waiting" for key, _, _ in PIPELINE_STAGES
+            }
             st.session_state.topic_input = ""
             st.rerun()
 
-        st.markdown('<div class="sidebar-section">Research History</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sidebar-section">Research History</div>',
+            unsafe_allow_html=True,
+        )
         if st.session_state.history:
             for item in st.session_state.history:
                 st.markdown(
@@ -959,7 +1041,9 @@ def render_sidebar() -> None:
                 unsafe_allow_html=True,
             )
 
-        st.markdown('<div class="sidebar-section">Pipeline Status</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sidebar-section">Pipeline Status</div>', unsafe_allow_html=True
+        )
         for key, name, _ in PIPELINE_STAGES:
             status = st.session_state.stage_states.get(key, "waiting")
             st.markdown(
@@ -972,9 +1056,16 @@ def render_sidebar() -> None:
                 unsafe_allow_html=True,
             )
 
-        gemini_state = "Configured" if os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") else "Needs API key"
+        gemini_state = (
+            "Configured"
+            if os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+            else "Needs API key"
+        )
         tavily_state = "Configured" if os.getenv("TAVILY_API_KEY") else "Needs API key"
-        st.markdown('<div class="sidebar-section">Model/API Status</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sidebar-section">Model/API Status</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown(
             f"""
 <div class="sidebar-card">
@@ -1068,7 +1159,9 @@ def render_results() -> None:
         if criteria:
             st.markdown("#### Critic Breakdown")
             for label, item_score in criteria.items():
-                st.progress(min(float(item_score) / 10, 1.0), text=f"{label}: {item_score}/10")
+                st.progress(
+                    min(float(item_score) / 10, 1.0), text=f"{label}: {item_score}/10"
+                )
 
     st.markdown("### Sources")
     render_source_cards(results.get("sources", []))
@@ -1117,11 +1210,17 @@ def main() -> None:
     source_count = len(results.get("sources", [])) if results else 0
     report_words = len((results.get("report", "") or "").split()) if results else 0
     score = results.get("score", 0) if results else 0
-    run_state = "Running" if st.session_state.running else "Complete" if st.session_state.done else "Idle"
+    run_state = (
+        "Running"
+        if st.session_state.running
+        else "Complete" if st.session_state.done else "Idle"
+    )
 
     metric_cols = st.columns(4)
     with metric_cols[0]:
-        render_card("Run State", run_state, st.session_state.active_topic or "Awaiting topic")
+        render_card(
+            "Run State", run_state, st.session_state.active_topic or "Awaiting topic"
+        )
     with metric_cols[1]:
         render_card("Sources", str(source_count), "Top search results")
     with metric_cols[2]:
@@ -1174,6 +1273,18 @@ def main() -> None:
             run_pipeline_with_live_ui(cleaned_topic, stage_slot, detail_slot)
             st.rerun()
 
-    st.markdown("---")
+        st.markdown("---")
     render_results()
+
+    st.markdown(
+        """
+        <div class="footer">
+            <strong>AgentLens</strong>
+            <span>AI Research Workspace</span>
+            <span>Built with LangChain · Gemini · Tavily · Streamlit</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.markdown("</div>", unsafe_allow_html=True)
