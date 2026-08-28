@@ -1,5 +1,5 @@
-from agents import build_search_agent, writer_chain, critic_chain
-from tools import scrape_url
+from agents import writer_chain, critic_chain
+from tools import scrape_url, get_search_results
 import re
 
 
@@ -31,7 +31,7 @@ def extract_score(feedback: str) -> int:
     Score: X/10
     """
 
-    match = re.search(r"Score:\s*(\d+(?:\.\d+)?)\s*/\s*10", feedback)
+    match = re.search(r"Overall Score:\s*(\d+(?:\.\d+)?)\s*/\s*10", feedback)
 
     if match:
         return int(float(match.group(1)))
@@ -93,34 +93,19 @@ def run_research_pipeline(topic: str) -> dict:
     # ============================================================
 
     print("\n" + " =" * 50)
-    print("step 1 - search agent is working ...")
+    print("step 1 - searching the web ...")
     print("=" * 50)
 
-    search_agent = build_search_agent()
+    search_results = get_search_results(query=topic, max_results=5)
 
-    search_result = search_agent.invoke(
-        {
-            "messages": [
-                (
-                    "user",
-                    f"Find recent, reliable and detailed information about: {topic}",
-                )
-            ]
-        }
+    state["search_results"] = "\n\n".join(
+        f"SOURCE {i}\n"
+        f"Title: {item['title']}\n"
+        f"URL: {item['url']}\n"
+        f"Snippet: {item['content'][:500]}"
+        for i, item in enumerate(search_results, start=1)
+        if item.get("url")
     )
-
-    search_content = search_result["messages"][-1].content
-
-    # Gemini can return structured content as a list.
-    # Convert it into a plain string for further processing.
-    if isinstance(search_content, list):
-
-        state["search_results"] = "\n".join(
-            item.get("text", "") for item in search_content if isinstance(item, dict)
-        )
-
-    else:
-        state["search_results"] = search_content
 
     print("\nSearch result:\n")
     print(state["search_results"])
@@ -133,20 +118,9 @@ def run_research_pipeline(topic: str) -> dict:
     print("step 2 - scraping top research sources ...")
     print("=" * 50)
 
-    search_text = state["search_results"]
+    urls = [item["url"] for item in search_results if item.get("url")]
 
-    # Extract URLs
-    urls = re.findall(r"https?://[^\s\)\]\>]+", search_text)
-
-    # Remove duplicates while preserving order
-    unique_urls = []
-
-    for url in urls:
-
-        url = url.rstrip(".,;:")
-
-        if url not in unique_urls:
-            unique_urls.append(url)
+    unique_urls = list(dict.fromkeys(urls))
 
     print(f"\nFound {len(unique_urls)} unique URLs.")
 
@@ -218,7 +192,7 @@ Unable to scrape this source.
     print("step 4 - critic is reviewing the report")
     print("=" * 50)
 
-    max_revisions = 2
+    max_revisions = 0
 
     for revision in range(max_revisions + 1):
 
@@ -230,7 +204,9 @@ Unable to scrape this source.
 
             print(f"\nCritic: Reviewing revised report " f"(revision {revision})...")
 
-        state["feedback"] = critic_chain.invoke({"report": state["report"]})
+        state["feedback"] = critic_chain.invoke(
+            {"report": state["report"], "research": research_combined}
+        )
 
         print("\nCritic report:\n")
         print(state["feedback"])
