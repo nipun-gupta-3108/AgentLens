@@ -9,7 +9,7 @@ import streamlit as st
 from markdown_it import MarkdownIt
 
 from agents import critic_chain
-from pipeline import extract_score, generate_report, revise_report
+from pipeline import extract_score, generate_report
 from tools import get_search_results, scrape_url
 
 MARKDOWN_RENDERER = MarkdownIt("commonmark", {"html": False})
@@ -931,24 +931,8 @@ CONTENT:
         st.session_state.results["score"] = score
         set_stage("critic", "done")
 
-        if score and score < 7:
-            set_stage("revision", "running")
-            with stage_slot:
-                render_stage_track()
-            detail_slot.info(
-                "Score is below threshold. Revising the report with critic feedback..."
-            )
-            revised = revise_report(
-                topic=topic,
-                report=report,
-                feedback=feedback,
-                research=research_combined,
-            )
-            st.session_state.results["report"] = revised
-            st.session_state.results["revised"] = True
-            set_stage("revision", "done")
-        else:
-            set_stage("revision", "skipped")
+        # Revision is disabled for the current free-tier configuration.
+        set_stage("revision", "skipped")
 
         st.session_state.running = False
         st.session_state.done = True

@@ -89,7 +89,7 @@ def run_research_pipeline(topic: str) -> dict:
     state = {}
 
     # ============================================================
-    # STEP 1 - SEARCH AGENT
+    # STEP 1 - WEB SEARCH
     # ============================================================
 
     print("\n" + " =" * 50)
