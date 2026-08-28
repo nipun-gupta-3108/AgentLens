@@ -1,24 +1,24 @@
 from langchain.agents import create_agent
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from tools import web_search , scrape_url 
+from tools import web_search , scrape_url
 from dotenv import load_dotenv
 
 load_dotenv()
 
-#model setup 
-llm = ChatOpenAI(model = "gpt-4o-mini",temperature=0)
+#model setup
+llm = ChatGroq(model = "openai/gpt-oss-20b",temperature=0)
 
 
-#1st agent 
+#1st agent
 def build_search_agent():
     return create_agent(
         model = llm,
         tools= [web_search]
     )
 
-#2nd agent 
+#2nd agent
 
 def build_reader_agent():
     return create_agent(
@@ -27,7 +27,7 @@ def build_reader_agent():
     )
 
 
-#writer chain 
+#writer chain
 
 writer_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are an expert research writer. Write clear, structured and insightful reports."),
@@ -49,7 +49,7 @@ Be detailed, factual and professional."""),
 
 writer_chain = writer_prompt | llm | StrOutputParser()
 
-#critic_chain 
+#critic_chain
 
 critic_prompt = ChatPromptTemplate.from_messages([
      ("system", "You are a sharp and constructive research critic. Be honest and specific."),
