@@ -1,4 +1,10 @@
+from dashboard_ui import main as _run_research_dashboard
+
+_run_research_dashboard()
+
 import streamlit as st
+
+st.stop()
 import time
 from agents import build_reader_agent, build_search_agent, writer_chain, critic_chain
 
